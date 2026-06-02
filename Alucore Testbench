@@ -1,0 +1,359 @@
+library IEEE;
+use IEEE.std_logic_1164.all;
+use IEEE.numeric_std.all;
+library work;
+use work.mc8051_p.all;
+
+entity tb_alucore is
+end tb_alucore;
+
+architecture behavioral of tb_alucore is
+
+  -- Component declaration
+  component alucore
+    generic (DWIDTH : integer := 8);
+    port (
+      op_a_i    : in  std_logic_vector(DWIDTH-1 downto 0);
+      op_b_i    : in  std_logic_vector(DWIDTH-1 downto 0);
+      alu_cmd_i : in  std_logic_vector(3 downto 0);
+      cy_i      : in  std_logic_vector((DWIDTH-1)/4 downto 0);
+      cy_o      : out std_logic_vector((DWIDTH-1)/4 downto 0);
+      result_o  : out std_logic_vector(DWIDTH-1 downto 0)
+    );
+  end component;
+
+  -- Constants
+  constant DWIDTH     : integer := 8;
+  constant CLK_PERIOD : time    := 10 ns;
+
+  -- ALU command constants (matching alucore)
+  constant NOP  : std_logic_vector(3 downto 0) := "0000";
+  constant LAND : std_logic_vector(3 downto 0) := "0011";
+  constant LOR  : std_logic_vector(3 downto 0) := "0101";
+  constant LXOR : std_logic_vector(3 downto 0) := "0110";
+  constant RL   : std_logic_vector(3 downto 0) := "0111";
+  constant RLC  : std_logic_vector(3 downto 0) := "1000";
+  constant RR   : std_logic_vector(3 downto 0) := "1001";
+  constant RRC  : std_logic_vector(3 downto 0) := "1010";
+  constant COMP : std_logic_vector(3 downto 0) := "1011";
+  constant INV  : std_logic_vector(3 downto 0) := "1100";
+
+  -- Input signals
+  signal op_a_i    : std_logic_vector(DWIDTH-1 downto 0)      := (others => '0');
+  signal op_b_i    : std_logic_vector(DWIDTH-1 downto 0)      := (others => '0');
+  signal alu_cmd_i : std_logic_vector(3 downto 0)             := (others => '0');
+  signal cy_i      : std_logic_vector((DWIDTH-1)/4 downto 0)  := (others => '0');
+
+  -- Output signals
+  signal cy_o      : std_logic_vector((DWIDTH-1)/4 downto 0);
+  signal result_o  : std_logic_vector(DWIDTH-1 downto 0);
+
+begin
+
+  -- Instantiate Unit Under Test
+  UUT : alucore
+    generic map (DWIDTH => DWIDTH)
+    port map (
+      op_a_i    => op_a_i,
+      op_b_i    => op_b_i,
+      alu_cmd_i => alu_cmd_i,
+      cy_i      => cy_i,
+      cy_o      => cy_o,
+      result_o  => result_o
+    );
+
+  -- Stimulus process
+  stim_proc : process
+  begin
+
+    -- ============================================================
+    -- TEST 1: AND  ?  F0 AND 0F = 00
+    -- ============================================================
+    report "TEST 1: LAND (F0 AND 0F = 00)";
+    op_a_i    <= x"F0";
+    op_b_i    <= x"0F";
+    alu_cmd_i <= LAND;
+    cy_i      <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = x"00")
+      report "FAIL TEST 1: Expected 00" severity error;
+    assert (cy_o = "00")
+      report "FAIL TEST 1: cy_o should be unchanged" severity error;
+    report "TEST 1 PASS: LAND result = 00";
+
+    -- ============================================================
+    -- TEST 2: AND  ?  FF AND AA = AA
+    -- ============================================================
+    report "TEST 2: LAND (FF AND AA = AA)";
+    op_a_i    <= x"FF";
+    op_b_i    <= x"AA";
+    alu_cmd_i <= LAND;
+    cy_i      <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = x"AA")
+      report "FAIL TEST 2: Expected AA" severity error;
+    report "TEST 2 PASS: LAND result = AA";
+
+    -- ============================================================
+    -- TEST 3: OR  ?  F0 OR 0F = FF
+    -- ============================================================
+    report "TEST 3: LOR (F0 OR 0F = FF)";
+    op_a_i    <= x"F0";
+    op_b_i    <= x"0F";
+    alu_cmd_i <= LOR;
+    cy_i      <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = x"FF")
+      report "FAIL TEST 3: Expected FF" severity error;
+    assert (cy_o = "00")
+      report "FAIL TEST 3: cy_o should be unchanged" severity error;
+    report "TEST 3 PASS: LOR result = FF";
+
+    -- ============================================================
+    -- TEST 4: OR  ?  AA OR 55 = FF
+    -- ============================================================
+    report "TEST 4: LOR (AA OR 55 = FF)";
+    op_a_i    <= x"AA";
+    op_b_i    <= x"55";
+    alu_cmd_i <= LOR;
+    cy_i      <= "01";
+    wait for CLK_PERIOD;
+    assert (result_o = x"FF")
+      report "FAIL TEST 4: Expected FF" severity error;
+    assert (cy_o = "01")
+      report "FAIL TEST 4: cy_o should be unchanged (01)" severity error;
+    report "TEST 4 PASS: LOR result = FF";
+
+    -- ============================================================
+    -- TEST 5: XOR  ?  FF XOR FF = 00
+    -- ============================================================
+    report "TEST 5: LXOR (FF XOR FF = 00)";
+    op_a_i    <= x"FF";
+    op_b_i    <= x"FF";
+    alu_cmd_i <= LXOR;
+    cy_i      <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = x"00")
+      report "FAIL TEST 5: Expected 00" severity error;
+    report "TEST 5 PASS: LXOR result = 00";
+
+    -- ============================================================
+    -- TEST 6: XOR  ?  AA XOR 55 = FF
+    -- ============================================================
+    report "TEST 6: LXOR (AA XOR 55 = FF)";
+    op_a_i    <= x"AA";
+    op_b_i    <= x"55";
+    alu_cmd_i <= LXOR;
+    cy_i      <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = x"FF")
+      report "FAIL TEST 6: Expected FF" severity error;
+    report "TEST 6 PASS: LXOR result = FF";
+
+    -- ============================================================
+    -- TEST 7: Rotate Left  ?  RL(10000001) = 00000011
+    -- Bit 7 wraps to bit 0
+    -- ============================================================
+    report "TEST 7: RL (10000001 -> 00000011)";
+    op_a_i    <= "10000001";   -- 0x81
+    op_b_i    <= x"00";
+    alu_cmd_i <= RL;
+    cy_i      <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = "00000011")
+      report "FAIL TEST 7: Expected 00000011" severity error;
+    report "TEST 7 PASS: RL result = 00000011";
+
+    -- ============================================================
+    -- TEST 8: Rotate Left  ?  RL(00000001) = 00000010
+    -- ============================================================
+    report "TEST 8: RL (00000001 -> 00000010)";
+    op_a_i    <= "00000001";   -- 0x01
+    alu_cmd_i <= RL;
+    cy_i      <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = "00000010")
+      report "FAIL TEST 8: Expected 00000010" severity error;
+    report "TEST 8 PASS: RL result = 00000010";
+
+    -- ============================================================
+    -- TEST 9: Rotate Left with Carry  ?  RLC(10000000), cy=0 ? 00000000, cy=1
+    -- Bit 7 goes to CY, old CY goes to bit 0
+    -- ============================================================
+    report "TEST 9: RLC (10000000, cy=0 -> 00000000, cy=1)";
+    op_a_i    <= "10000000";   -- 0x80
+    alu_cmd_i <= RLC;
+    cy_i      <= "00";         -- CY = 0
+    wait for CLK_PERIOD;
+    assert (result_o = "00000000")
+      report "FAIL TEST 9: Expected 00000000" severity error;
+    assert (cy_o((DWIDTH-1)/4) = '1')
+      report "FAIL TEST 9: cy_o MSB should be 1" severity error;
+    report "TEST 9 PASS: RLC result = 00000000, cy=1";
+
+    -- ============================================================
+    -- TEST 10: Rotate Left with Carry  ?  RLC(00000001), cy=1 ? 00000011, cy=0
+    -- ============================================================
+    report "TEST 10: RLC (00000001, cy=1 -> 00000011, cy=0)";
+    op_a_i    <= "00000001";
+    alu_cmd_i <= RLC;
+    cy_i      <= "01";         -- CY = 1
+    wait for CLK_PERIOD;
+    assert (result_o = "00000011")
+      report "FAIL TEST 10: Expected 00000011" severity error;
+    assert (cy_o((DWIDTH-1)/4) = '0')
+      report "FAIL TEST 10: cy_o MSB should be 0" severity error;
+    report "TEST 10 PASS: RLC result = 00000011, cy=0";
+
+    -- ============================================================
+    -- TEST 11: Rotate Right  ?  RR(10000001) = 11000000
+    -- Bit 0 wraps to bit 7
+    -- ============================================================
+    report "TEST 11: RR (10000001 -> 11000000)";
+    op_a_i    <= "10000001";   -- 0x81
+    alu_cmd_i <= RR;
+    cy_i      <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = "11000000")
+      report "FAIL TEST 11: Expected 11000000" severity error;
+    report "TEST 11 PASS: RR result = 11000000";
+
+    -- ============================================================
+    -- TEST 12: Rotate Right  ?  RR(00000010) = 00000001
+    -- ============================================================
+    report "TEST 12: RR (00000010 -> 00000001)";
+    op_a_i    <= "00000010";
+    alu_cmd_i <= RR;
+    cy_i      <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = "00000001")
+      report "FAIL TEST 12: Expected 00000001" severity error;
+    report "TEST 12 PASS: RR result = 00000001";
+
+    -- ============================================================
+    -- TEST 13: Rotate Right with Carry  ?  RRC(00000001), cy=0 ? 00000000, cy=1
+    -- Bit 0 goes to CY, old CY goes to bit 7
+    -- ============================================================
+    report "TEST 13: RRC (00000001, cy=0 -> 00000000, cy=1)";
+    op_a_i    <= "00000001";
+    alu_cmd_i <= RRC;
+    cy_i      <= "00";         -- CY = 0
+    wait for CLK_PERIOD;
+    assert (result_o = "00000000")
+      report "FAIL TEST 13: Expected 00000000" severity error;
+    assert (cy_o((DWIDTH-1)/4) = '1')
+      report "FAIL TEST 13: cy_o MSB should be 1" severity error;
+    report "TEST 13 PASS: RRC result = 00000000, cy=1";
+
+    -- ============================================================
+    -- TEST 14: Rotate Right with Carry  ?  RRC(00000010), cy=1 ? 10000001, cy=0
+    -- ============================================================
+    report "TEST 14: RRC (00000010, cy=1 -> 10000001, cy=0)";
+    op_a_i    <= "00000010";
+    alu_cmd_i <= RRC;
+    cy_i      <= "01";         -- CY = 1
+    wait for CLK_PERIOD;
+    assert (result_o = "10000001")
+      report "FAIL TEST 14: Expected 10000001" severity error;
+    assert (cy_o((DWIDTH-1)/4) = '0')
+      report "FAIL TEST 14: cy_o MSB should be 0" severity error;
+    report "TEST 14 PASS: RRC result = 10000001, cy=0";
+
+    -- ============================================================
+    -- TEST 15: COMPARE  ?  op_a = op_b (equal)
+    -- Expected: result = 00, cy = 0
+    -- ============================================================
+    report "TEST 15: COMP (AA = AA -> result=00, cy=0)";
+    op_a_i    <= x"AA";
+    op_b_i    <= x"AA";
+    alu_cmd_i <= COMP;
+    cy_i      <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = x"00")
+      report "FAIL TEST 15: Expected 00 (equal)" severity error;
+    assert (cy_o((DWIDTH-1)/4) = '0')
+      report "FAIL TEST 15: cy_o should be 0 (not less than)" severity error;
+    report "TEST 15 PASS: COMP equal, result=00, cy=0";
+
+    -- ============================================================
+    -- TEST 16: COMPARE  ?  op_a < op_b
+    -- Expected: result = FF, cy = 1
+    -- ============================================================
+    report "TEST 16: COMP (05 < AA -> result=FF, cy=1)";
+    op_a_i    <= x"05";
+    op_b_i    <= x"AA";
+    alu_cmd_i <= COMP;
+    cy_i      <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = x"FF")
+      report "FAIL TEST 16: Expected FF (not equal)" severity error;
+    assert (cy_o((DWIDTH-1)/4) = '1')
+      report "FAIL TEST 16: cy_o should be 1 (less than)" severity error;
+    report "TEST 16 PASS: COMP less than, result=FF, cy=1";
+
+    -- ============================================================
+    -- TEST 17: COMPARE  ?  op_a > op_b
+    -- Expected: result = FF, cy = 0
+    -- ============================================================
+    report "TEST 17: COMP (AA > 05 -> result=FF, cy=0)";
+    op_a_i    <= x"AA";
+    op_b_i    <= x"05";
+    alu_cmd_i <= COMP;
+    cy_i      <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = x"FF")
+      report "FAIL TEST 17: Expected FF (not equal)" severity error;
+    assert (cy_o((DWIDTH-1)/4) = '0')
+      report "FAIL TEST 17: cy_o should be 0 (greater than)" severity error;
+    report "TEST 17 PASS: COMP greater than, result=FF, cy=0";
+
+    -- ============================================================
+    -- TEST 18: INVERT  ?  NOT(AA) = 55
+    -- ============================================================
+    report "TEST 18: INV (NOT AA = 55)";
+    op_a_i    <= x"AA";
+    op_b_i    <= x"00";
+    alu_cmd_i <= INV;
+    cy_i      <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = x"55")
+      report "FAIL TEST 18: Expected 55" severity error;
+    report "TEST 18 PASS: INV result = 55";
+
+    -- ============================================================
+    -- TEST 19: INVERT  ?  NOT(00) = FF
+    -- ============================================================
+    report "TEST 19: INV (NOT 00 = FF)";
+    op_a_i    <= x"00";
+    alu_cmd_i <= INV;
+    cy_i      <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = x"FF")
+      report "FAIL TEST 19: Expected FF" severity error;
+    report "TEST 19 PASS: INV result = FF";
+
+    -- ============================================================
+    -- TEST 20: NOP / Unknown command
+    -- Expected: result = 00, cy = 00
+    -- ============================================================
+    report "TEST 20: NOP (unknown command)";
+    op_a_i    <= x"FF";
+    op_b_i    <= x"FF";
+    alu_cmd_i <= NOP;
+    cy_i      <= "11";
+    wait for CLK_PERIOD;
+    assert (result_o = x"00")
+      report "FAIL TEST 20: Expected 00 for NOP" severity error;
+    assert (cy_o = "00")
+      report "FAIL TEST 20: cy_o should be 00 for NOP" severity error;
+    report "TEST 20 PASS: NOP result = 00, cy = 00";
+
+    -- All done
+    report "============================================";
+    report "ALL 20 TESTS COMPLETED";
+    report "============================================";
+    wait;
+
+  end process stim_proc;
+
+end behavioral;
