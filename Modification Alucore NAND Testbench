@@ -1,0 +1,269 @@
+library IEEE;
+use IEEE.std_logic_1164.all;
+use IEEE.numeric_std.all;
+library work;
+use work.mc8051_p.all;
+
+entity tb_alucore_modified is
+end tb_alucore_modified;
+
+architecture behavioral of tb_alucore_modified is
+
+  component alucore
+    generic (DWIDTH : integer := 8);
+    port (
+      op_a_i    : in  std_logic_vector(DWIDTH-1 downto 0);
+      op_b_i    : in  std_logic_vector(DWIDTH-1 downto 0);
+      alu_cmd_i : in  std_logic_vector(3 downto 0);
+      cy_i      : in  std_logic_vector((DWIDTH-1)/4 downto 0);
+      cy_o      : out std_logic_vector((DWIDTH-1)/4 downto 0);
+      result_o  : out std_logic_vector(DWIDTH-1 downto 0)
+    );
+  end component;
+
+  constant DWIDTH     : integer := 8;
+  constant CLK_PERIOD : time    := 10 ns;
+
+  -- Command constants
+  constant NOP   : std_logic_vector(3 downto 0) := "0000";
+  constant LNAND : std_logic_vector(3 downto 0) := "0001"; -- MODIFICATION
+  constant LAND  : std_logic_vector(3 downto 0) := "0011";
+  constant LOR   : std_logic_vector(3 downto 0) := "0101";
+  constant LXOR  : std_logic_vector(3 downto 0) := "0110";
+  constant RL    : std_logic_vector(3 downto 0) := "0111";
+  constant RLC   : std_logic_vector(3 downto 0) := "1000";
+  constant RR    : std_logic_vector(3 downto 0) := "1001";
+  constant RRC   : std_logic_vector(3 downto 0) := "1010";
+  constant COMP  : std_logic_vector(3 downto 0) := "1011";
+  constant INV   : std_logic_vector(3 downto 0) := "1100";
+
+  -- Input signals
+  signal op_a_i    : std_logic_vector(DWIDTH-1 downto 0)     := (others => '0');
+  signal op_b_i    : std_logic_vector(DWIDTH-1 downto 0)     := (others => '0');
+  signal alu_cmd_i : std_logic_vector(3 downto 0)            := (others => '0');
+  signal cy_i      : std_logic_vector((DWIDTH-1)/4 downto 0) := (others => '0');
+
+  -- Output signals
+  signal cy_o     : std_logic_vector((DWIDTH-1)/4 downto 0);
+  signal result_o : std_logic_vector(DWIDTH-1 downto 0);
+
+begin
+
+  UUT : alucore
+    generic map (DWIDTH => DWIDTH)
+    port map (
+      op_a_i    => op_a_i,
+      op_b_i    => op_b_i,
+      alu_cmd_i => alu_cmd_i,
+      cy_i      => cy_i,
+      cy_o      => cy_o,
+      result_o  => result_o
+    );
+
+  stim_proc : process
+  begin
+
+    -- ============================================================
+    -- ORIGINAL TESTS (unchanged operations)
+    -- ============================================================
+
+    report "TEST 1: LAND (F0 AND 0F = 00)";
+    op_a_i <= x"F0"; op_b_i <= x"0F";
+    alu_cmd_i <= LAND; cy_i <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = x"00")
+      report "FAIL TEST 1: Expected 00" severity error;
+    report "TEST 1 PASS";
+
+    report "TEST 2: LAND (FF AND AA = AA)";
+    op_a_i <= x"FF"; op_b_i <= x"AA";
+    alu_cmd_i <= LAND; cy_i <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = x"AA")
+      report "FAIL TEST 2: Expected AA" severity error;
+    report "TEST 2 PASS";
+
+    report "TEST 3: LOR (F0 OR 0F = FF)";
+    op_a_i <= x"F0"; op_b_i <= x"0F";
+    alu_cmd_i <= LOR; cy_i <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = x"FF")
+      report "FAIL TEST 3: Expected FF" severity error;
+    report "TEST 3 PASS";
+
+    report "TEST 4: LXOR (AA XOR 55 = FF)";
+    op_a_i <= x"AA"; op_b_i <= x"55";
+    alu_cmd_i <= LXOR; cy_i <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = x"FF")
+      report "FAIL TEST 4: Expected FF" severity error;
+    report "TEST 4 PASS";
+
+    report "TEST 5: RL (10000001 -> 00000011)";
+    op_a_i <= "10000001"; op_b_i <= x"00";
+    alu_cmd_i <= RL; cy_i <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = "00000011")
+      report "FAIL TEST 5: Expected 00000011" severity error;
+    report "TEST 5 PASS";
+
+    report "TEST 6: RLC (10000000, cy=0 -> 00000000, cy=1)";
+    op_a_i <= "10000000";
+    alu_cmd_i <= RLC; cy_i <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = "00000000")
+      report "FAIL TEST 6: Expected 00000000" severity error;
+    assert (cy_o((DWIDTH-1)/4) = '1')
+      report "FAIL TEST 6: cy_o should be 1" severity error;
+    report "TEST 6 PASS";
+
+    report "TEST 7: RR (10000001 -> 11000000)";
+    op_a_i <= "10000001";
+    alu_cmd_i <= RR; cy_i <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = "11000000")
+      report "FAIL TEST 7: Expected 11000000" severity error;
+    report "TEST 7 PASS";
+
+    report "TEST 8: RRC (00000001, cy=0 -> 00000000, cy=1)";
+    op_a_i <= "00000001";
+    alu_cmd_i <= RRC; cy_i <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = "00000000")
+      report "FAIL TEST 8: Expected 00000000" severity error;
+    assert (cy_o((DWIDTH-1)/4) = '1')
+      report "FAIL TEST 8: cy_o should be 1" severity error;
+    report "TEST 8 PASS";
+
+    report "TEST 9: COMP (AA = AA -> 00, cy=0)";
+    op_a_i <= x"AA"; op_b_i <= x"AA";
+    alu_cmd_i <= COMP; cy_i <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = x"00")
+      report "FAIL TEST 9: Expected 00" severity error;
+    assert (cy_o((DWIDTH-1)/4) = '0')
+      report "FAIL TEST 9: cy should be 0" severity error;
+    report "TEST 9 PASS";
+
+    report "TEST 10: COMP (05 < AA -> FF, cy=1)";
+    op_a_i <= x"05"; op_b_i <= x"AA";
+    alu_cmd_i <= COMP; cy_i <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = x"FF")
+      report "FAIL TEST 10: Expected FF" severity error;
+    assert (cy_o((DWIDTH-1)/4) = '1')
+      report "FAIL TEST 10: cy should be 1" severity error;
+    report "TEST 10 PASS";
+
+    report "TEST 11: INV (NOT AA = 55)";
+    op_a_i <= x"AA";
+    alu_cmd_i <= INV; cy_i <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = x"55")
+      report "FAIL TEST 11: Expected 55" severity error;
+    report "TEST 11 PASS";
+
+    -- ============================================================
+    -- MODIFICATION TESTS: NAND operation
+    -- NAND truth: NOT(A AND B)
+    -- ============================================================
+
+    report "=== MODIFICATION TESTS: NAND ===";
+
+    -- NAND TEST 1: F0 NAND 0F
+    -- F0 AND 0F = 00 ? NOT(00) = FF
+    report "NAND TEST 1: F0 NAND 0F = FF";
+    op_a_i    <= x"F0";
+    op_b_i    <= x"0F";
+    alu_cmd_i <= LNAND;
+    cy_i      <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = x"FF")
+      report "FAIL NAND TEST 1: Expected FF" severity error;
+    assert (cy_o = "00")
+      report "FAIL NAND TEST 1: cy_o should be unchanged" severity error;
+    report "NAND TEST 1 PASS: F0 NAND 0F = FF";
+
+    -- NAND TEST 2: FF NAND FF
+    -- FF AND FF = FF ? NOT(FF) = 00
+    report "NAND TEST 2: FF NAND FF = 00";
+    op_a_i    <= x"FF";
+    op_b_i    <= x"FF";
+    alu_cmd_i <= LNAND;
+    cy_i      <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = x"00")
+      report "FAIL NAND TEST 2: Expected 00" severity error;
+    report "NAND TEST 2 PASS: FF NAND FF = 00";
+
+    -- NAND TEST 3: AA NAND 55
+    -- AA AND 55 = 00 ? NOT(00) = FF
+    report "NAND TEST 3: AA NAND 55 = FF";
+    op_a_i    <= x"AA";
+    op_b_i    <= x"55";
+    alu_cmd_i <= LNAND;
+    cy_i      <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = x"FF")
+      report "FAIL NAND TEST 3: Expected FF" severity error;
+    report "NAND TEST 3 PASS: AA NAND 55 = FF";
+
+    -- NAND TEST 4: 00 NAND 00
+    -- 00 AND 00 = 00 ? NOT(00) = FF
+    report "NAND TEST 4: 00 NAND 00 = FF";
+    op_a_i    <= x"00";
+    op_b_i    <= x"00";
+    alu_cmd_i <= LNAND;
+    cy_i      <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = x"FF")
+      report "FAIL NAND TEST 4: Expected FF" severity error;
+    report "NAND TEST 4 PASS: 00 NAND 00 = FF";
+
+    -- NAND TEST 5: FF NAND 00
+    -- FF AND 00 = 00 ? NOT(00) = FF
+    report "NAND TEST 5: FF NAND 00 = FF";
+    op_a_i    <= x"FF";
+    op_b_i    <= x"00";
+    alu_cmd_i <= LNAND;
+    cy_i      <= "01";    -- carry should pass through unchanged
+    wait for CLK_PERIOD;
+    assert (result_o = x"FF")
+      report "FAIL NAND TEST 5: Expected FF" severity error;
+    assert (cy_o = "01")
+      report "FAIL NAND TEST 5: cy_o should be unchanged (01)" severity error;
+    report "NAND TEST 5 PASS: FF NAND 00 = FF, carry unchanged";
+
+    -- NAND TEST 6: A5 NAND 5A
+    -- A5 = 10100101, 5A = 01011010
+    -- AND = 00000000 ? NOT = 11111111 = FF
+    report "NAND TEST 6: A5 NAND 5A = FF";
+    op_a_i    <= x"A5";
+    op_b_i    <= x"5A";
+    alu_cmd_i <= LNAND;
+    cy_i      <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = x"FF")
+      report "FAIL NAND TEST 6: Expected FF" severity error;
+    report "NAND TEST 6 PASS: A5 NAND 5A = FF";
+
+    -- NAND TEST 7: CC NAND CC
+    -- CC AND CC = CC ? NOT(CC) = 33
+    report "NAND TEST 7: CC NAND CC = 33";
+    op_a_i    <= x"CC";
+    op_b_i    <= x"CC";
+    alu_cmd_i <= LNAND;
+    cy_i      <= "00";
+    wait for CLK_PERIOD;
+    assert (result_o = x"33")
+      report "FAIL NAND TEST 7: Expected 33" severity error;
+    report "NAND TEST 7 PASS: CC NAND CC = 33";
+
+    report "============================================";
+    report "ALL TESTS COMPLETED - NAND MODIFICATION OK";
+    report "============================================";
+    wait;
+
+  end process stim_proc;
+
+end behavioral;
