@@ -1,0 +1,136 @@
+library IEEE; 
+use IEEE.std_logic_1164.all; 
+use IEEE.std_logic_arith.all; 
+library work;
+use work.mc8051_p.all;
+  
+-----------------------------ENTITY DECLARATION--------------------------------
+
+entity alucore is
+
+  generic (DWIDTH : integer := 8);      -- Data width of the ALU
+
+  port (op_a_i    : in std_logic_vector(DWIDTH-1 downto 0);
+        op_b_i    : in std_logic_vector(DWIDTH-1 downto 0);
+        alu_cmd_i : in std_logic_vector(3 downto 0);
+        cy_i      : in std_logic_vector((DWIDTH-1)/4 downto 0);
+        cy_o      : out std_logic_vector((DWIDTH-1)/4 downto 0);
+        result_o  : out std_logic_vector(DWIDTH-1 downto 0));
+
+end alucore;
+
+-- op_a_i....... operand A
+-- op_b_i....... operand B
+-- alu_cmd_i.... command for the ALU core
+-- cy_i......... carry flags (MSB is CY, rest is AC)
+-- cy_o......... resulting carry out (MSB is CY, rest is AC)
+-- result_o..... result
+
+architecture rtl of alucore is
+
+  constant LAND  : std_logic_vector(3 downto 0) := "0011";
+  constant LNAND : std_logic_vector(3 downto 0) := "0001"; -- MODIFICATION: new NAND command
+  constant LOR   : std_logic_vector(3 downto 0) := "0101";
+  constant LXOR  : std_logic_vector(3 downto 0) := "0110";
+  constant RL    : std_logic_vector(3 downto 0) := "0111";
+  constant RLC   : std_logic_vector(3 downto 0) := "1000";
+  constant RR    : std_logic_vector(3 downto 0) := "1001";
+  constant RRC   : std_logic_vector(3 downto 0) := "1010";
+  constant COMP  : std_logic_vector(3 downto 0) := "1011";
+  constant INV   : std_logic_vector(3 downto 0) := "1100";
+
+begin
+
+  p_alu: process (alu_cmd_i, op_a_i, op_b_i, cy_i)
+
+  begin
+  
+  case alu_cmd_i is
+-------------------------------------------------------------------------------
+    when LAND =>  -- op_a_i AND op_b_i
+      result_o <= op_a_i and op_b_i;
+      cy_o <= cy_i;
+-------------------------------------------------------------------------------
+    -- MODIFICATION: NAND operation added
+    -- NAND is the inverse of AND: result = NOT(op_a_i AND op_b_i)
+    -- Truth table example (1 bit):
+    --   0 NAND 0 = 1
+    --   0 NAND 1 = 1
+    --   1 NAND 0 = 1
+    --   1 NAND 1 = 0
+    when LNAND =>  -- NOT(op_a_i AND op_b_i)
+      result_o <= not(op_a_i and op_b_i);
+      cy_o <= cy_i;
+-------------------------------------------------------------------------------
+    when LOR =>  -- op_a_i OR op_b_i
+      result_o <= op_a_i or op_b_i;
+      cy_o <= cy_i;      
+-------------------------------------------------------------------------------
+    when LXOR =>  -- op_a_i XOR op_b_i
+      result_o <= op_a_i xor op_b_i;
+      cy_o <= cy_i;      
+-------------------------------------------------------------------------------
+    when RL =>  -- rotate left op_a_i
+      if DWIDTH > 1 then
+        result_o(DWIDTH-1 downto 1) <= op_a_i(DWIDTH-2 downto 0);
+        result_o(0) <= op_a_i(DWIDTH-1);
+      else
+        result_o <= op_a_i;
+      end if;
+      cy_o <= cy_i;      
+-------------------------------------------------------------------------------
+    when RLC =>  -- rotate left op_a_i with CY
+      if DWIDTH > 1 then
+        result_o(DWIDTH-1 downto 1) <= op_a_i(DWIDTH-2 downto 0);
+        result_o(0) <= cy_i((DWIDTH-1)/4);
+      else
+        result_o(0) <= cy_i((DWIDTH-1)/4);
+      end if;
+      cy_o <= cy_i;      
+      cy_o((DWIDTH-1)/4) <= op_a_i(DWIDTH-1);      
+-------------------------------------------------------------------------------
+    when RR =>  -- rotate right op_a_i
+      if DWIDTH > 1 then
+        result_o(DWIDTH-2 downto 0) <= op_a_i(DWIDTH-1 downto 1);
+        result_o(DWIDTH-1) <= op_a_i(0);
+      else
+        result_o <= op_a_i;
+      end if;
+      cy_o <= cy_i;      
+-------------------------------------------------------------------------------
+    when RRC =>  -- rotate right op_a_i with CY
+      if DWIDTH > 1 then
+        result_o(DWIDTH-2 downto 0) <= op_a_i(DWIDTH-1 downto 1);
+        result_o(DWIDTH-1) <= cy_i((DWIDTH-1)/4);
+      else
+        result_o(0) <= cy_i((DWIDTH-1)/4);
+      end if;
+      cy_o <= cy_i;      
+      cy_o((DWIDTH-1)/4) <= op_a_i(0);      
+-------------------------------------------------------------------------------
+    when COMP =>  -- Compare op_a_i with op_b_i
+      if op_a_i = op_b_i then
+        result_o <= (others => '0');
+      else
+        result_o <= (others => '1');
+      end if;
+      cy_o <= cy_i;         
+      if op_a_i < op_b_i then
+        cy_o((DWIDTH-1)/4) <= '1';
+      else
+        cy_o((DWIDTH-1)/4) <= '0';          
+      end if;
+-------------------------------------------------------------------------------
+    when INV =>  -- invert op_a_i
+      result_o <= not(op_a_i);
+      cy_o <= cy_i;      
+-------------------------------------------------------------------------------
+    when others =>  -- turn unit off
+      result_o <= (others => '0');      
+      cy_o <= (others => '0');
+-------------------------------------------------------------------------------
+  end case;
+  
+  end process p_alu;
+
+end rtl;
