@@ -1,0 +1,449 @@
+library IEEE; 
+use IEEE.std_logic_1164.all; 
+use IEEE.numeric_std.all;        -- FIX 1: Replaced deprecated std_logic_arith
+library work;
+use work.mc8051_p.all;
+  
+-----------------------------ENTITY DECLARATION--------------------------------
+
+entity alumux is
+
+  generic (DWIDTH : integer := 8);             -- Data width of the ALU
+
+  port (
+        -- inputs from control unit
+        rom_data_i    : in  std_logic_vector(DWIDTH-1 downto 0);
+        ram_data_i    : in  std_logic_vector(DWIDTH-1 downto 0);
+        acc_i         : in  std_logic_vector(DWIDTH-1 downto 0);
+        cmd_i         : in  std_logic_vector(5 downto 0);
+        cy_i          : in  std_logic_vector((DWIDTH-1)/4 downto 0);
+        ov_i          : in  std_logic;
+        -- outputs to control unit
+        cy_o          : out std_logic_vector((DWIDTH-1)/4 downto 0);
+        ov_o          : out std_logic;
+        result_a_o    : out std_logic_vector(DWIDTH-1 downto 0);
+        result_b_o    : out std_logic_vector(DWIDTH-1 downto 0);
+        -- inputs from alu core   
+        result_i      : in  std_logic_vector(DWIDTH-1 downto 0);
+        new_cy_i      : in  std_logic_vector((DWIDTH-1)/4 downto 0);
+        -- inputs from addsub unit   
+        addsub_rslt_i : in  std_logic_vector(DWIDTH-1 downto 0);
+        addsub_cy_i   : in  std_logic_vector((DWIDTH-1)/4 downto 0);
+        addsub_ov_i   : in  std_logic;
+        -- outputs to alu core
+        op_a_o        : out std_logic_vector(DWIDTH-1 downto 0);
+        op_b_o        : out std_logic_vector(DWIDTH-1 downto 0);
+        alu_cmd_o     : out std_logic_vector(3 downto 0);
+        -- outputs to addsub unit
+        opa_o         : out std_logic_vector(DWIDTH-1 downto 0);
+        opb_o         : out std_logic_vector(DWIDTH-1 downto 0);
+        addsub_o      : out std_logic;
+        addsub_cy_o   : out std_logic;
+        -- outputs to divider unit
+        dvdnd_o       : out std_logic_vector(DWIDTH-1 downto 0);
+        dvsor_o       : out std_logic_vector(DWIDTH-1 downto 0);
+        -- inputs from divider
+        qutnt_i       : in  std_logic_vector(DWIDTH-1 downto 0);
+        rmndr_i       : in  std_logic_vector(DWIDTH-1 downto 0);
+        -- outputs to multiplier
+        mltplcnd_o    : out std_logic_vector(DWIDTH-1 downto 0);
+        mltplctr_o    : out std_logic_vector(DWIDTH-1 downto 0);
+        -- inputs from multiplier
+        product_i     : in  std_logic_vector((DWIDTH*2)-1 downto 0);
+        -- outputs to decimal adjustement
+        dcml_data_o   : out std_logic_vector(DWIDTH-1 downto 0);
+        -- inputs from decimal adjustement
+        dcml_data_i   : in  std_logic_vector(DWIDTH-1 downto 0);
+        dcml_cy_i     : in  std_logic);
+
+end alumux;
+
+architecture rtl of alumux is
+
+  constant DA             : std_logic_vector(5 downto 0) := "100000";
+  constant ADD_ACC_RAM    : std_logic_vector(5 downto 0) := "100001";
+  constant ADD_ACC_ROM    : std_logic_vector(5 downto 0) := "100010";
+  constant ADDC_ACC_RAM   : std_logic_vector(5 downto 0) := "100011";
+  constant ADDC_ACC_ROM   : std_logic_vector(5 downto 0) := "100100";
+  constant AND_ACC_RAM    : std_logic_vector(5 downto 0) := "100101";
+  constant AND_ACC_ROM    : std_logic_vector(5 downto 0) := "100110";
+  constant AND_RAM_ROM    : std_logic_vector(5 downto 0) := "100111";
+  constant SUB_ACC_RAM    : std_logic_vector(5 downto 0) := "101000";
+  constant SUB_ACC_ROM    : std_logic_vector(5 downto 0) := "101001";
+  constant MUL_ACC_RAM    : std_logic_vector(5 downto 0) := "101010";
+  constant DIV_ACC_RAM    : std_logic_vector(5 downto 0) := "101011";
+  constant OR_RAM_ACC     : std_logic_vector(5 downto 0) := "101100";
+  constant OR_ROM_ACC     : std_logic_vector(5 downto 0) := "101101";
+  constant OR_ROM_RAM     : std_logic_vector(5 downto 0) := "101110";
+  constant XOR_RAM_ACC    : std_logic_vector(5 downto 0) := "101111";
+  constant XOR_ROM_ACC    : std_logic_vector(5 downto 0) := "110000";
+  constant XOR_ROM_RAM    : std_logic_vector(5 downto 0) := "110001";
+  constant RL_ACC         : std_logic_vector(5 downto 0) := "110010";
+  constant RLC_ACC        : std_logic_vector(5 downto 0) := "110011";
+  constant RR_ACC         : std_logic_vector(5 downto 0) := "110100";
+  constant RRC_ACC        : std_logic_vector(5 downto 0) := "110101";
+  constant INV_ACC        : std_logic_vector(5 downto 0) := "110110";
+  constant INV_RAM        : std_logic_vector(5 downto 0) := "110111";
+  constant DEC_ACC        : std_logic_vector(5 downto 0) := "111000";
+  constant DEC_RAM        : std_logic_vector(5 downto 0) := "111001";
+  constant COMP_RAM_ACC   : std_logic_vector(5 downto 0) := "111010";
+  constant COMP_ROM_ACC   : std_logic_vector(5 downto 0) := "111011";
+  constant COMP_ROM_RAM   : std_logic_vector(5 downto 0) := "111100";
+  constant INC_ACC        : std_logic_vector(5 downto 0) := "111110";
+  constant INC_RAM        : std_logic_vector(5 downto 0) := "111111";
+
+  constant NOP  : std_logic_vector(3 downto 0) := "0000";
+  constant LAND : std_logic_vector(3 downto 0) := "0011";
+  constant LOR  : std_logic_vector(3 downto 0) := "0101";
+  constant LXOR : std_logic_vector(3 downto 0) := "0110";
+  constant RL   : std_logic_vector(3 downto 0) := "0111";
+  constant RLC  : std_logic_vector(3 downto 0) := "1000";
+  constant RR   : std_logic_vector(3 downto 0) := "1001";
+  constant RRC  : std_logic_vector(3 downto 0) := "1010";
+  constant COMP : std_logic_vector(3 downto 0) := "1011";
+  constant INV  : std_logic_vector(3 downto 0) := "1100";
+
+  -- FIX 2: Declare intermediate signal to avoid double assignment of cy_o
+  signal cy_temp : std_logic_vector((DWIDTH-1)/4 downto 0);
+
+begin
+
+  -- FIX 2: Assign cy_temp to cy_o outside the process
+  cy_o <= cy_temp;
+
+  -- Multiplex the input data and generate the command for the alu core.
+  p_alucore_mux : process (rom_data_i,
+                           ram_data_i,
+                           acc_i,     
+                           cmd_i)
+  begin
+    case cmd_i is
+       when AND_ACC_RAM   =>
+         alu_cmd_o <= LAND;
+         op_a_o    <= acc_i;
+         op_b_o    <= ram_data_i;
+       when AND_ACC_ROM   =>
+         alu_cmd_o <= LAND;
+         op_a_o    <= acc_i;
+         op_b_o    <= rom_data_i;
+       when AND_RAM_ROM   =>
+         alu_cmd_o <= LAND;
+         op_a_o    <= ram_data_i;
+         op_b_o    <= rom_data_i;
+       when OR_RAM_ACC    =>
+         alu_cmd_o <= LOR;
+         op_a_o    <= acc_i;
+         op_b_o    <= ram_data_i;
+       when OR_ROM_ACC    =>
+         alu_cmd_o <= LOR;
+         op_a_o    <= acc_i;
+         op_b_o    <= rom_data_i;
+       when OR_ROM_RAM    =>
+         alu_cmd_o <= LOR;
+         op_a_o    <= rom_data_i;
+         op_b_o    <= ram_data_i;
+       when XOR_RAM_ACC   =>
+         alu_cmd_o <= LXOR;
+         op_a_o    <= acc_i;
+         op_b_o    <= ram_data_i;
+       when XOR_ROM_ACC   =>
+         alu_cmd_o <= LXOR;
+         op_a_o    <= acc_i;
+         op_b_o    <= rom_data_i;
+       when XOR_ROM_RAM   =>
+         alu_cmd_o <= LXOR;
+         op_a_o    <= rom_data_i;
+         op_b_o    <= ram_data_i;
+       when RL_ACC        =>
+         alu_cmd_o <= RL;
+         op_a_o    <= acc_i;
+         op_b_o    <= ( others => '0' );
+       when RLC_ACC       =>
+         alu_cmd_o <= RLC;
+         op_a_o    <= acc_i;
+         op_b_o    <= ( others => '0' );
+       when RR_ACC        =>
+         alu_cmd_o <= RR;
+         op_a_o    <= acc_i;
+         op_b_o    <= ( others => '0' );
+       when RRC_ACC       =>          
+         alu_cmd_o <= RRC;            
+         op_a_o    <= acc_i;          
+         op_b_o    <= ( others => '0' );
+       when INV_ACC       =>          
+         alu_cmd_o <= INV;            
+         op_a_o    <= acc_i;          
+         op_b_o    <= ( others => '0' );
+       when INV_RAM       =>          
+         alu_cmd_o <= INV;            
+         op_a_o    <= ram_data_i;     
+         op_b_o    <= ( others => '0' );
+       when COMP_RAM_ACC  =>          
+         alu_cmd_o <= COMP;           
+         op_a_o    <= acc_i;          
+         op_b_o    <= ram_data_i;     
+       when COMP_ROM_ACC  =>          
+         alu_cmd_o <= COMP;           
+         op_a_o    <= acc_i;          
+         op_b_o    <= rom_data_i;     
+       when COMP_ROM_RAM  =>          
+         alu_cmd_o <= COMP;           
+         op_a_o    <= ram_data_i;     
+         op_b_o    <= rom_data_i;     
+       when others        =>          
+         alu_cmd_o <= NOP;            
+         op_a_o    <= ( others => '0' );
+         op_b_o    <= ( others => '0' );
+    end case;
+  end process p_alucore_mux;
+
+  -- Multiplex the input data for all the functions not included in the
+  -- alu core.
+  -- FIX 3: Added ov_i to sensitivity list
+  p_ext_mux : process (ram_data_i,
+                       rom_data_i,
+                       acc_i,
+                       cy_i,
+                       ov_i,
+                       cmd_i)
+  begin
+    case cmd_i is
+       when DA =>
+         dcml_data_o <= acc_i;
+         mltplcnd_o  <= ( others => '0' );
+         mltplctr_o  <= ( others => '0' );
+         dvdnd_o     <= ( others => '0' );
+         dvsor_o     <= ( others => '0' );
+         addsub_o    <= '0';
+         addsub_cy_o <= '0';
+         opa_o       <= ( others => '0' );
+         opb_o       <= ( others => '0' );
+       when DIV_ACC_RAM =>
+         dcml_data_o <= ( others => '0' );
+         mltplcnd_o  <= ( others => '0' );
+         mltplctr_o  <= ( others => '0' );
+         dvdnd_o     <= acc_i;
+         dvsor_o     <= ram_data_i;
+         addsub_o    <= '0';
+         addsub_cy_o <= '0';
+         opa_o       <= ( others => '0' );
+         opb_o       <= ( others => '0' );
+       when MUL_ACC_RAM =>
+         dcml_data_o <= ( others => '0' );
+         mltplcnd_o  <= acc_i;
+         mltplctr_o  <= ram_data_i;
+         dvdnd_o     <= ( others => '0' );
+         dvsor_o     <= ( others => '0' );
+         addsub_o    <= '0';
+         addsub_cy_o <= '0';
+         opa_o       <= ( others => '0' );
+         opb_o       <= ( others => '0' );
+       when INC_ACC =>
+         dcml_data_o <= ( others => '0' );
+         mltplcnd_o  <= ( others => '0' );
+         mltplctr_o  <= ( others => '0' );
+         dvdnd_o     <= ( others => '0' );
+         dvsor_o     <= ( others => '0' );
+         addsub_o    <= '1';
+         addsub_cy_o <= '0';
+         opa_o       <= acc_i;
+         -- FIX 1: Replaced conv_unsigned with to_unsigned (numeric_std)
+         opb_o       <= std_logic_vector(to_unsigned(1, DWIDTH));
+       when INC_RAM =>
+         dcml_data_o <= ( others => '0' );
+         mltplcnd_o  <= ( others => '0' );
+         mltplctr_o  <= ( others => '0' );
+         dvdnd_o     <= ( others => '0' );
+         dvsor_o     <= ( others => '0' );
+         addsub_o    <= '1';
+         addsub_cy_o <= '0';
+         opa_o       <= ram_data_i;
+         -- FIX 1: Replaced conv_unsigned with to_unsigned (numeric_std)
+         opb_o       <= std_logic_vector(to_unsigned(1, DWIDTH));
+       when DEC_ACC =>
+         dcml_data_o <= ( others => '0' );
+         mltplcnd_o  <= ( others => '0' );
+         mltplctr_o  <= ( others => '0' );
+         dvdnd_o     <= ( others => '0' );
+         dvsor_o     <= ( others => '0' );
+         addsub_o    <= '0';
+         addsub_cy_o <= '0';
+         opa_o       <= acc_i;
+         -- FIX 1: Replaced conv_unsigned with to_unsigned (numeric_std)
+         opb_o       <= std_logic_vector(to_unsigned(1, DWIDTH));
+       when DEC_RAM =>
+         dcml_data_o <= ( others => '0' );
+         mltplcnd_o  <= ( others => '0' );
+         mltplctr_o  <= ( others => '0' );
+         dvdnd_o     <= ( others => '0' );
+         dvsor_o     <= ( others => '0' );
+         addsub_o    <= '0';
+         addsub_cy_o <= '0';
+         opa_o       <= ram_data_i;
+         -- FIX 1: Replaced conv_unsigned with to_unsigned (numeric_std)
+         opb_o       <= std_logic_vector(to_unsigned(1, DWIDTH));
+       when SUB_ACC_RAM =>
+         dcml_data_o <= ( others => '0' );
+         mltplcnd_o  <= ( others => '0' );
+         mltplctr_o  <= ( others => '0' );
+         dvdnd_o     <= ( others => '0' );
+         dvsor_o     <= ( others => '0' );
+         addsub_o    <= '0';
+         addsub_cy_o <= cy_i((DWIDTH-1)/4);
+         opa_o       <= acc_i;
+         opb_o       <= ram_data_i;
+       when SUB_ACC_ROM =>
+         dcml_data_o <= ( others => '0' );
+         mltplcnd_o  <= ( others => '0' );
+         mltplctr_o  <= ( others => '0' );
+         dvdnd_o     <= ( others => '0' );
+         dvsor_o     <= ( others => '0' );
+         addsub_o    <= '0';
+         addsub_cy_o <= cy_i((DWIDTH-1)/4);
+         opa_o       <= acc_i;
+         opb_o       <= rom_data_i;
+       when ADD_ACC_RAM =>
+         dcml_data_o <= ( others => '0' );
+         mltplcnd_o  <= ( others => '0' );
+         mltplctr_o  <= ( others => '0' );
+         dvdnd_o     <= ( others => '0' );
+         dvsor_o     <= ( others => '0' );
+         addsub_o    <= '1';
+         addsub_cy_o <= '0';
+         opa_o       <= acc_i;
+         opb_o       <= ram_data_i;
+       when ADD_ACC_ROM =>
+         dcml_data_o <= ( others => '0' );
+         mltplcnd_o  <= ( others => '0' );
+         mltplctr_o  <= ( others => '0' );
+         dvdnd_o     <= ( others => '0' );
+         dvsor_o     <= ( others => '0' );
+         addsub_o    <= '1';
+         addsub_cy_o <= '0';
+         opa_o       <= acc_i;
+         opb_o       <= rom_data_i;
+       when ADDC_ACC_RAM =>
+         dcml_data_o <= ( others => '0' );
+         mltplcnd_o  <= ( others => '0' );
+         mltplctr_o  <= ( others => '0' );
+         dvdnd_o     <= ( others => '0' );
+         dvsor_o     <= ( others => '0' );
+         addsub_o    <= '1';
+         addsub_cy_o <= cy_i((DWIDTH-1)/4);
+         opa_o       <= acc_i;
+         opb_o       <= ram_data_i;
+       when ADDC_ACC_ROM =>
+         dcml_data_o <= ( others => '0' );
+         mltplcnd_o  <= ( others => '0' );
+         mltplctr_o  <= ( others => '0' );
+         dvdnd_o     <= ( others => '0' );
+         dvsor_o     <= ( others => '0' );
+         addsub_o    <= '1';
+         addsub_cy_o <= cy_i((DWIDTH-1)/4);
+         opa_o       <= acc_i;
+         opb_o       <= rom_data_i;
+       when others =>
+         dcml_data_o <= ( others => '0' );
+         mltplcnd_o  <= ( others => '0' );
+         mltplctr_o  <= ( others => '0' );
+         dvdnd_o     <= ( others => '0' );
+         dvsor_o     <= ( others => '0' );
+         addsub_o    <= '0';
+         addsub_cy_o <= '0';
+         opa_o       <= ( others => '0' );
+         opb_o       <= ( others => '0' );
+    end case;
+  end process p_ext_mux;
+
+  -- Multiplex the results for all the units contributing to the ALU.
+  p_rslt_mux : process (ram_data_i,
+                        cy_i,
+                        ov_i,
+                        product_i,
+                        qutnt_i,
+                        rmndr_i,
+                        result_i,
+                        new_cy_i,
+                        addsub_rslt_i,
+                        addsub_cy_i,
+                        addsub_ov_i,
+                        dcml_data_i,
+                        dcml_cy_i,
+                        cmd_i)
+  begin
+    case cmd_i is
+       when DA          =>
+         if (C_IMPL_DA /= 0) then
+           result_a_o <= dcml_data_i;
+           result_b_o <= ( others => '0' );
+           -- FIX 2: Build cy_temp fully in one assignment using concatenation
+           -- Set all bits from cy_i, then override MSB with dcml_cy_i
+           cy_temp                  <= cy_i;
+           cy_temp((DWIDTH-1)/4)    <= dcml_cy_i;
+           ov_o                     <= ov_i;
+         else  
+           result_a_o <= ( others => '0' );
+           result_b_o <= ( others => '0' );
+           -- FIX 1: Replaced conv_std_logic_vector with to_unsigned (numeric_std)
+           cy_temp    <= std_logic_vector(to_unsigned(0, (DWIDTH-1)/4+1));
+           ov_o       <= '0';
+         end if;
+       when DIV_ACC_RAM =>
+         if (C_IMPL_DIV /= 0) then
+           result_a_o <= qutnt_i;
+           result_b_o <= rmndr_i;
+           -- FIX 1: Replaced conv_std_logic_vector with to_unsigned (numeric_std)
+           cy_temp    <= std_logic_vector(to_unsigned(0, (DWIDTH-1)/4+1));
+           -- FIX 1: Replaced conv_std_logic_vector with to_unsigned (numeric_std)
+           if ram_data_i = std_logic_vector(to_unsigned(0, DWIDTH)) then
+             ov_o     <= '1';
+           else
+             ov_o     <= '0';
+           end if;
+         else
+           result_a_o <= ( others => '0' );
+           result_b_o <= ( others => '0' );
+           -- FIX 1: Replaced conv_std_logic_vector with to_unsigned (numeric_std)
+           cy_temp    <= std_logic_vector(to_unsigned(0, (DWIDTH-1)/4+1));
+           ov_o       <= '0';
+         end if;
+       when MUL_ACC_RAM =>
+         if (C_IMPL_MUL /= 0) then
+           result_a_o <= product_i(DWIDTH-1 downto 0);
+           result_b_o <= product_i(DWIDTH*2-1 downto DWIDTH);
+           -- FIX 1: Replaced conv_std_logic_vector with to_unsigned (numeric_std)
+           cy_temp    <= std_logic_vector(to_unsigned(0, (DWIDTH-1)/4+1));
+           -- FIX 1: Replaced conv_std_logic_vector with to_unsigned (numeric_std)
+           if product_i(DWIDTH*2-1 downto DWIDTH)
+               = std_logic_vector(to_unsigned(0, DWIDTH)) then
+             ov_o     <= '0';
+           else
+             ov_o     <= '1';
+           end if;
+         else
+           result_a_o <= ( others => '0' );
+           result_b_o <= ( others => '0' );
+           -- FIX 1: Replaced conv_std_logic_vector with to_unsigned (numeric_std)
+           cy_temp    <= std_logic_vector(to_unsigned(0, (DWIDTH-1)/4+1));
+           ov_o       <= '0';
+         end if;
+       when SUB_ACC_RAM | SUB_ACC_ROM | ADD_ACC_RAM | ADD_ACC_ROM |
+            ADDC_ACC_RAM | ADDC_ACC_ROM  =>
+         result_a_o <= addsub_rslt_i;
+         result_b_o <= ( others => '0' );
+         cy_temp    <= addsub_cy_i;
+         ov_o       <= addsub_ov_i;
+       when INC_ACC | INC_RAM | DEC_ACC | DEC_RAM =>
+         result_a_o <= addsub_rslt_i;
+         result_b_o <= ( others => '0' );
+         cy_temp    <= cy_i;
+         ov_o       <= addsub_ov_i;	 
+       when others      =>
+         result_a_o <= result_i;
+         result_b_o <= ( others => '0' );
+         cy_temp    <= new_cy_i;
+         ov_o       <= ov_i;
+    end case;
+  end process p_rslt_mux;
+
+end rtl;
