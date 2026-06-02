@@ -1,0 +1,337 @@
+library IEEE;
+use IEEE.std_logic_1164.all;
+use IEEE.numeric_std.all;
+library work;
+use work.mc8051_p.all;
+
+entity tb_alumux is
+end tb_alumux;
+
+architecture behavioral of tb_alumux is
+
+  -- Component declaration
+  component alumux
+    generic (DWIDTH : integer := 8);
+    port (
+      rom_data_i    : in  std_logic_vector(DWIDTH-1 downto 0);
+      ram_data_i    : in  std_logic_vector(DWIDTH-1 downto 0);
+      acc_i         : in  std_logic_vector(DWIDTH-1 downto 0);
+      cmd_i         : in  std_logic_vector(5 downto 0);
+      cy_i          : in  std_logic_vector((DWIDTH-1)/4 downto 0);
+      ov_i          : in  std_logic;
+      cy_o          : out std_logic_vector((DWIDTH-1)/4 downto 0);
+      ov_o          : out std_logic;
+      result_a_o    : out std_logic_vector(DWIDTH-1 downto 0);
+      result_b_o    : out std_logic_vector(DWIDTH-1 downto 0);
+      result_i      : in  std_logic_vector(DWIDTH-1 downto 0);
+      new_cy_i      : in  std_logic_vector((DWIDTH-1)/4 downto 0);
+      addsub_rslt_i : in  std_logic_vector(DWIDTH-1 downto 0);
+      addsub_cy_i   : in  std_logic_vector((DWIDTH-1)/4 downto 0);
+      addsub_ov_i   : in  std_logic;
+      op_a_o        : out std_logic_vector(DWIDTH-1 downto 0);
+      op_b_o        : out std_logic_vector(DWIDTH-1 downto 0);
+      alu_cmd_o     : out std_logic_vector(3 downto 0);
+      opa_o         : out std_logic_vector(DWIDTH-1 downto 0);
+      opb_o         : out std_logic_vector(DWIDTH-1 downto 0);
+      addsub_o      : out std_logic;
+      addsub_cy_o   : out std_logic;
+      dvdnd_o       : out std_logic_vector(DWIDTH-1 downto 0);
+      dvsor_o       : out std_logic_vector(DWIDTH-1 downto 0);
+      qutnt_i       : in  std_logic_vector(DWIDTH-1 downto 0);
+      rmndr_i       : in  std_logic_vector(DWIDTH-1 downto 0);
+      mltplcnd_o    : out std_logic_vector(DWIDTH-1 downto 0);
+      mltplctr_o    : out std_logic_vector(DWIDTH-1 downto 0);
+      product_i     : in  std_logic_vector((DWIDTH*2)-1 downto 0);
+      dcml_data_o   : out std_logic_vector(DWIDTH-1 downto 0);
+      dcml_data_i   : in  std_logic_vector(DWIDTH-1 downto 0);
+      dcml_cy_i     : in  std_logic
+    );
+  end component;
+
+  -- Constants
+  constant DWIDTH   : integer := 8;
+  constant CLK_PERIOD : time := 10 ns;
+
+  -- Input signals
+  signal rom_data_i    : std_logic_vector(DWIDTH-1 downto 0) := (others => '0');
+  signal ram_data_i    : std_logic_vector(DWIDTH-1 downto 0) := (others => '0');
+  signal acc_i         : std_logic_vector(DWIDTH-1 downto 0) := (others => '0');
+  signal cmd_i         : std_logic_vector(5 downto 0)        := (others => '0');
+  signal cy_i          : std_logic_vector((DWIDTH-1)/4 downto 0) := (others => '0');
+  signal ov_i          : std_logic := '0';
+  signal result_i      : std_logic_vector(DWIDTH-1 downto 0) := (others => '0');
+  signal new_cy_i      : std_logic_vector((DWIDTH-1)/4 downto 0) := (others => '0');
+  signal addsub_rslt_i : std_logic_vector(DWIDTH-1 downto 0) := (others => '0');
+  signal addsub_cy_i   : std_logic_vector((DWIDTH-1)/4 downto 0) := (others => '0');
+  signal addsub_ov_i   : std_logic := '0';
+  signal qutnt_i       : std_logic_vector(DWIDTH-1 downto 0) := (others => '0');
+  signal rmndr_i       : std_logic_vector(DWIDTH-1 downto 0) := (others => '0');
+  signal product_i     : std_logic_vector((DWIDTH*2)-1 downto 0) := (others => '0');
+  signal dcml_data_i   : std_logic_vector(DWIDTH-1 downto 0) := (others => '0');
+  signal dcml_cy_i     : std_logic := '0';
+
+  -- Output signals
+  signal cy_o          : std_logic_vector((DWIDTH-1)/4 downto 0);
+  signal ov_o          : std_logic;
+  signal result_a_o    : std_logic_vector(DWIDTH-1 downto 0);
+  signal result_b_o    : std_logic_vector(DWIDTH-1 downto 0);
+  signal op_a_o        : std_logic_vector(DWIDTH-1 downto 0);
+  signal op_b_o        : std_logic_vector(DWIDTH-1 downto 0);
+  signal alu_cmd_o     : std_logic_vector(3 downto 0);
+  signal opa_o         : std_logic_vector(DWIDTH-1 downto 0);
+  signal opb_o         : std_logic_vector(DWIDTH-1 downto 0);
+  signal addsub_o      : std_logic;
+  signal addsub_cy_o   : std_logic;
+  signal dvdnd_o       : std_logic_vector(DWIDTH-1 downto 0);
+  signal dvsor_o       : std_logic_vector(DWIDTH-1 downto 0);
+  signal mltplcnd_o    : std_logic_vector(DWIDTH-1 downto 0);
+  signal mltplctr_o    : std_logic_vector(DWIDTH-1 downto 0);
+  signal dcml_data_o   : std_logic_vector(DWIDTH-1 downto 0);
+
+begin
+
+  -- Instantiate Unit Under Test (UUT)
+  UUT : alumux
+    generic map (DWIDTH => DWIDTH)
+    port map (
+      rom_data_i    => rom_data_i,
+      ram_data_i    => ram_data_i,
+      acc_i         => acc_i,
+      cmd_i         => cmd_i,
+      cy_i          => cy_i,
+      ov_i          => ov_i,
+      cy_o          => cy_o,
+      ov_o          => ov_o,
+      result_a_o    => result_a_o,
+      result_b_o    => result_b_o,
+      result_i      => result_i,
+      new_cy_i      => new_cy_i,
+      addsub_rslt_i => addsub_rslt_i,
+      addsub_cy_i   => addsub_cy_i,
+      addsub_ov_i   => addsub_ov_i,
+      op_a_o        => op_a_o,
+      op_b_o        => op_b_o,
+      alu_cmd_o     => alu_cmd_o,
+      opa_o         => opa_o,
+      opb_o         => opb_o,
+      addsub_o      => addsub_o,
+      addsub_cy_o   => addsub_cy_o,
+      dvdnd_o       => dvdnd_o,
+      dvsor_o       => dvsor_o,
+      qutnt_i       => qutnt_i,
+      rmndr_i       => rmndr_i,
+      mltplcnd_o    => mltplcnd_o,
+      mltplctr_o    => mltplctr_o,
+      product_i     => product_i,
+      dcml_data_o   => dcml_data_o,
+      dcml_data_i   => dcml_data_i,
+      dcml_cy_i     => dcml_cy_i
+    );
+
+  -- Stimulus process
+  stim_proc : process
+  begin
+
+    -- ============================================================
+    -- TEST 1: AND ACC with RAM  (cmd = "100101")
+    -- Expected: alu_cmd_o = LAND("0011"), op_a = acc, op_b = ram
+    -- ============================================================
+    report "TEST 1: AND_ACC_RAM";
+    acc_i      <= x"F0";
+    ram_data_i <= x"0F";
+    rom_data_i <= x"00";
+    cmd_i      <= "100101";
+    wait for CLK_PERIOD;
+    assert (alu_cmd_o = "0011")
+      report "FAIL TEST 1: alu_cmd_o should be LAND (0011)" severity error;
+    assert (op_a_o = x"F0")
+      report "FAIL TEST 1: op_a_o should be ACC (F0)" severity error;
+    assert (op_b_o = x"0F")
+      report "FAIL TEST 1: op_b_o should be RAM (0F)" severity error;
+    report "TEST 1 DONE";
+
+    -- ============================================================
+    -- TEST 2: OR ROM with ACC  (cmd = "101101")
+    -- Expected: alu_cmd_o = LOR("0101"), op_a = acc, op_b = rom
+    -- ============================================================
+    report "TEST 2: OR_ROM_ACC";
+    acc_i      <= x"AA";
+    rom_data_i <= x"55";
+    cmd_i      <= "101101";
+    wait for CLK_PERIOD;
+    assert (alu_cmd_o = "0101")
+      report "FAIL TEST 2: alu_cmd_o should be LOR (0101)" severity error;
+    assert (op_a_o = x"AA")
+      report "FAIL TEST 2: op_a_o should be ACC (AA)" severity error;
+    assert (op_b_o = x"55")
+      report "FAIL TEST 2: op_b_o should be ROM (55)" severity error;
+    report "TEST 2 DONE";
+
+    -- ============================================================
+    -- TEST 3: XOR RAM with ACC  (cmd = "101111")
+    -- Expected: alu_cmd_o = LXOR("0110")
+    -- ============================================================
+    report "TEST 3: XOR_RAM_ACC";
+    acc_i      <= x"CC";
+    ram_data_i <= x"33";
+    cmd_i      <= "101111";
+    wait for CLK_PERIOD;
+    assert (alu_cmd_o = "0110")
+      report "FAIL TEST 3: alu_cmd_o should be LXOR (0110)" severity error;
+    report "TEST 3 DONE";
+
+    -- ============================================================
+    -- TEST 4: ADD ACC with RAM  (cmd = "100001")
+    -- Expected: addsub_o = '1', opa = acc, opb = ram
+    -- ============================================================
+    report "TEST 4: ADD_ACC_RAM";
+    acc_i         <= x"10";
+    ram_data_i    <= x"20";
+    addsub_rslt_i <= x"30";
+    addsub_cy_i   <= "00";
+    addsub_ov_i   <= '0';
+    cmd_i         <= "100001";
+    wait for CLK_PERIOD;
+    assert (addsub_o = '1')
+      report "FAIL TEST 4: addsub_o should be 1 (ADD)" severity error;
+    assert (addsub_cy_o = '0')
+      report "FAIL TEST 4: addsub_cy_o should be 0" severity error;
+    assert (opa_o = x"10")
+      report "FAIL TEST 4: opa_o should be ACC (10)" severity error;
+    assert (opb_o = x"20")
+      report "FAIL TEST 4: opb_o should be RAM (20)" severity error;
+    report "TEST 4 DONE";
+
+    -- ============================================================
+    -- TEST 5: SUB ACC with ROM  (cmd = "101001")
+    -- Expected: addsub_o = '0', carry passed through
+    -- ============================================================
+    report "TEST 5: SUB_ACC_ROM";
+    acc_i      <= x"50";
+    rom_data_i <= x"20";
+    cy_i       <= "01";
+    cmd_i      <= "101001";
+    wait for CLK_PERIOD;
+    assert (addsub_o = '0')
+      report "FAIL TEST 5: addsub_o should be 0 (SUB)" severity error;
+    assert (opa_o = x"50")
+      report "FAIL TEST 5: opa_o should be ACC (50)" severity error;
+    assert (opb_o = x"20")
+      report "FAIL TEST 5: opb_o should be ROM (20)" severity error;
+    report "TEST 5 DONE";
+
+    -- ============================================================
+    -- TEST 6: MUL ACC with RAM  (cmd = "101010")
+    -- Expected: mltplcnd = acc, mltplctr = ram
+    -- ============================================================
+    report "TEST 6: MUL_ACC_RAM";
+    acc_i      <= x"04";
+    ram_data_i <= x"03";
+    product_i  <= x"000C";  -- 4 * 3 = 12
+    cmd_i      <= "101010";
+    wait for CLK_PERIOD;
+    assert (mltplcnd_o = x"04")
+      report "FAIL TEST 6: mltplcnd_o should be ACC (04)" severity error;
+    assert (mltplctr_o = x"03")
+      report "FAIL TEST 6: mltplctr_o should be RAM (03)" severity error;
+    report "TEST 6 DONE";
+
+    -- ============================================================
+    -- TEST 7: DIV ACC by RAM  (cmd = "101011")
+    -- Expected: dvdnd = acc, dvsor = ram
+    -- ============================================================
+    report "TEST 7: DIV_ACC_RAM";
+    acc_i      <= x"0C";
+    ram_data_i <= x"03";
+    qutnt_i    <= x"04";
+    rmndr_i    <= x"00";
+    cmd_i      <= "101011";
+    wait for CLK_PERIOD;
+    assert (dvdnd_o = x"0C")
+      report "FAIL TEST 7: dvdnd_o should be ACC (0C)" severity error;
+    assert (dvsor_o = x"03")
+      report "FAIL TEST 7: dvsor_o should be RAM (03)" severity error;
+    report "TEST 7 DONE";
+
+    -- ============================================================
+    -- TEST 8: INC ACC  (cmd = "111110")
+    -- Expected: addsub_o = '1', opa = acc, opb = 1
+    -- ============================================================
+    report "TEST 8: INC_ACC";
+    acc_i      <= x"05";
+    cmd_i      <= "111110";
+    wait for CLK_PERIOD;
+    assert (addsub_o = '1')
+      report "FAIL TEST 8: addsub_o should be 1 (INC)" severity error;
+    assert (opa_o = x"05")
+      report "FAIL TEST 8: opa_o should be ACC (05)" severity error;
+    assert (opb_o = x"01")
+      report "FAIL TEST 8: opb_o should be 1" severity error;
+    report "TEST 8 DONE";
+
+    -- ============================================================
+    -- TEST 9: DEC RAM  (cmd = "111001")
+    -- Expected: addsub_o = '0', opa = ram, opb = 1
+    -- ============================================================
+    report "TEST 9: DEC_RAM";
+    ram_data_i <= x"08";
+    cmd_i      <= "111001";
+    wait for CLK_PERIOD;
+    assert (addsub_o = '0')
+      report "FAIL TEST 9: addsub_o should be 0 (DEC)" severity error;
+    assert (opa_o = x"08")
+      report "FAIL TEST 9: opa_o should be RAM (08)" severity error;
+    assert (opb_o = x"01")
+      report "FAIL TEST 9: opb_o should be 1" severity error;
+    report "TEST 9 DONE";
+
+    -- ============================================================
+    -- TEST 10: Rotate Left ACC  (cmd = "110010")
+    -- Expected: alu_cmd_o = RL("0111")
+    -- ============================================================
+    report "TEST 10: RL_ACC";
+    acc_i <= x"81";
+    cmd_i <= "110010";
+    wait for CLK_PERIOD;
+    assert (alu_cmd_o = "0111")
+      report "FAIL TEST 10: alu_cmd_o should be RL (0111)" severity error;
+    assert (op_a_o = x"81")
+      report "FAIL TEST 10: op_a_o should be ACC (81)" severity error;
+    report "TEST 10 DONE";
+
+    -- ============================================================
+    -- TEST 11: INV ACC  (cmd = "110110")
+    -- Expected: alu_cmd_o = INV("1100")
+    -- ============================================================
+    report "TEST 11: INV_ACC";
+    acc_i <= x"AA";
+    cmd_i <= "110110";
+    wait for CLK_PERIOD;
+    assert (alu_cmd_o = "1100")
+      report "FAIL TEST 11: alu_cmd_o should be INV (1100)" severity error;
+    report "TEST 11 DONE";
+
+    -- ============================================================
+    -- TEST 12: NOP / Unknown command  (cmd = "000000")
+    -- Expected: alu_cmd_o = NOP("0000"), all outputs zero
+    -- ============================================================
+    report "TEST 12: NOP (unknown cmd)";
+    cmd_i <= "000000";
+    wait for CLK_PERIOD;
+    assert (alu_cmd_o = "0000")
+      report "FAIL TEST 12: alu_cmd_o should be NOP (0000)" severity error;
+    assert (op_a_o = x"00")
+      report "FAIL TEST 12: op_a_o should be 0" severity error;
+    assert (op_b_o = x"00")
+      report "FAIL TEST 12: op_b_o should be 0" severity error;
+    report "TEST 12 DONE";
+
+    -- All tests complete
+    report "============================================";
+    report "ALL TESTS COMPLETED";
+    report "============================================";
+    wait;
+
+  end process stim_proc;
+
+end behavioral;
